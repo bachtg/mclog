@@ -102,3 +102,34 @@ func (l *Log) Read(offset uint64) ([]byte, error) {
 
 	return data, nil
 }
+
+func (l *Log) Dump() ([]byte, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if _, err := l.file.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	return io.ReadAll(l.file)
+}
+
+func (l *Log) Load(data []byte) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if err := l.file.Truncate(0); err != nil {
+		return err
+	}
+
+	if _, err := l.file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	if _, err := l.file.Write(data); err != nil {
+		return err
+	}
+
+	l.size = uint64(len(data))
+	return nil
+}

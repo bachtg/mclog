@@ -32,22 +32,47 @@ func start(args []string) error {
 	}
 }
 
+// args: [program, "server", grpcPort, raftPort, "bootstrap"/"not-bootstrap", serfPort, serfPortBootstrap]
 func startServer(args []string) error {
-	conn, err := net.Listen("tcp", fmt.Sprintf(":%s", args[2]))
+	grpcAddress := fmt.Sprintf(":%s", args[2])
+
+	// init new service
+	sv, err := service.NewService(fmt.Sprintf("./data/%s.log", args[2]))
+	if err != nil {
+		return err
+	}
+
+	// init Raft node
+	raftAddr := fmt.Sprintf("localhost:%s", args[3])
+	raftNode, err := service.NewRaftNode(raftAddr, sv, args[4] == "bootstrap")
+	if err != nil {
+		return err
+	}
+	sv.EmbedRaft(raftNode, raftAddr)
+
+	// init Serf node
+	serfAddr := fmt.Sprintf("localhost:%s", args[5])
+	tags := map[string]string{
+		"raft_addr": raftAddr,
+		"grpc_port": grpcAddress,
+	}
+
+	nodeDiscoverer, err := service.NewNodeDiscoverer(serfAddr, tags, args[6:])
+	if err != nil {
+		return err
+	}
+	sv.EmbedNodeDiscoverer(nodeDiscoverer)
+
+	// start gRPC server
+	conn, err := net.Listen("tcp", grpcAddress)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
 	grpcServer := grpc.NewServer()
-
-	service, err := service.NewService("./data/data.log")
-	if err != nil {
-		return err
-	}
-
-	api.RegisterLogServiceServer(grpcServer, service)
-	fmt.Println("gRPC server listening on", fmt.Sprintf(":%s", args[2]))
+	api.RegisterLogServiceServer(grpcServer, sv)
+	fmt.Println("gRPC server listening on", grpcAddress)
 
 	if err := grpcServer.Serve(conn); err != nil {
 		return err
