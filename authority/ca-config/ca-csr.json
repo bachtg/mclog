@@ -1,0 +1,16 @@
+{
+    "CN": "mclog Root CA",
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "VN",
+            "ST": "HCM",
+            "L": "HCM",
+            "O": "mclog",
+            "OU": "Engineering"
+        }
+    ]
+}

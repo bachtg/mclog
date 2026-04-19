@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/bachtg/mclog/api"
 	"github.com/bachtg/mclog/internal/service"
+	"github.com/bachtg/mclog/internal/tls"
 )
 
 func main() {
@@ -70,7 +72,17 @@ func startServer(args []string) error {
 	}
 	defer conn.Close()
 
-	grpcServer := grpc.NewServer()
+	tlsConfig, err := tls.NewTLS(&tls.TLSConfig{
+		CertFile:   "./authority/certs/server.pem",
+		KeyFile:    "./authority/certs/server-key.pem",
+		CAFile:     "./authority/certs/ca.pem",
+		ServerAddr: grpcAddress,
+		IsServer:   true,
+	})
+	grpcServer := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(tlsConfig)),
+	)
+
 	api.RegisterLogServiceServer(grpcServer, sv)
 	fmt.Println("gRPC server listening on", grpcAddress)
 
@@ -84,9 +96,21 @@ func startClient(args []string) error {
 	var (
 		serverPort = args[2]
 		command    = args[3]
+		serverAddr = fmt.Sprintf("localhost:%s", serverPort)
 	)
 
-	conn, err := grpc.Dial("localhost:"+serverPort, grpc.WithInsecure())
+	tlsConfig, err := tls.NewTLS(&tls.TLSConfig{
+		CertFile:   "./authority/certs/client.pem",
+		KeyFile:    "./authority/certs/client-key.pem",
+		CAFile:     "./authority/certs/ca.pem",
+		ServerAddr: serverAddr,
+		IsServer:   false,
+	})
+	if err != nil {
+		return err
+	}
+
+	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	if err != nil {
 		return err
 	}
