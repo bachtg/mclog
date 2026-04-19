@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -26,7 +27,42 @@ func (s *Service) EmbedRaft(raftNode *raft.Raft, raftAddr string) {
 	}()
 }
 
-func NewRaftNode(raftAddr string, fsm raft.FSM, isBootstrap bool) (*raft.Raft, error) {
+type tlsStreamLayer struct {
+	listener  net.Listener
+	tlsConfig *tls.Config
+}
+
+func (t *tlsStreamLayer) Accept() (net.Conn, error) {
+	return t.listener.Accept()
+}
+
+func (t *tlsStreamLayer) Close() error {
+	return t.listener.Close()
+}
+
+func (t *tlsStreamLayer) Addr() net.Addr {
+	return t.listener.Addr()
+}
+
+func (t *tlsStreamLayer) Dial(address raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: timeout}
+
+	return tls.DialWithDialer(dialer, "tcp", string(address), t.tlsConfig)
+}
+
+func NewTLSStreamLayer(addr string, tlsConfig *tls.Config) (raft.StreamLayer, error) {
+	listener, err := tls.Listen("tcp", addr, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tlsStreamLayer{
+		listener:  listener,
+		tlsConfig: tlsConfig,
+	}, nil
+}
+
+func NewRaftNode(raftAddr string, fsm raft.FSM, isBootstrap bool, tlsStream raft.StreamLayer) (*raft.Raft, error) {
 	config := raft.DefaultConfig()
 
 	// store log entries
@@ -51,13 +87,7 @@ func NewRaftNode(raftAddr string, fsm raft.FSM, isBootstrap bool) (*raft.Raft, e
 	config.SnapshotInterval = 30 * time.Second
 	config.SnapshotThreshold = 2
 
-	add, _ := net.ResolveTCPAddr("tcp", raftAddr)
-
-	transport, err := raft.NewTCPTransport(raftAddr, add, 3, 10*time.Second, os.Stderr)
-	if err != nil {
-		return nil, err
-	}
-
+	transport := raft.NewNetworkTransport(tlsStream, 3, 10*time.Second, nil)
 	raftNode, err := raft.NewRaft(config, fsm, logStore, stableStore, snapshotStore, transport)
 	if err != nil {
 		return nil, err

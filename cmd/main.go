@@ -46,7 +46,24 @@ func startServer(args []string) error {
 
 	// init Raft node
 	raftAddr := fmt.Sprintf("localhost:%s", args[3])
-	raftNode, err := service.NewRaftNode(raftAddr, sv, args[4] == "bootstrap")
+	tlsConfig, err := tls.NewTLS(&tls.TLSConfig{
+		CertFile:   "./authority/certs/server.pem",
+		KeyFile:    "./authority/certs/server-key.pem",
+		CAFile:     "./authority/certs/ca.pem",
+		ServerAddr: "localhost",
+		IsServer:   true,
+	})
+	if err != nil {
+		return err
+	}
+
+	tlsStream, err := service.NewTLSStreamLayer(raftAddr, tlsConfig)
+	if err != nil {
+		return err
+	}
+	defer tlsStream.Close()
+
+	raftNode, err := service.NewRaftNode(raftAddr, sv, args[4] == "bootstrap", tlsStream)
 	if err != nil {
 		return err
 	}
@@ -72,13 +89,6 @@ func startServer(args []string) error {
 	}
 	defer conn.Close()
 
-	tlsConfig, err := tls.NewTLS(&tls.TLSConfig{
-		CertFile:   "./authority/certs/server.pem",
-		KeyFile:    "./authority/certs/server-key.pem",
-		CAFile:     "./authority/certs/ca.pem",
-		ServerAddr: grpcAddress,
-		IsServer:   true,
-	})
 	grpcServer := grpc.NewServer(
 		grpc.Creds(credentials.NewTLS(tlsConfig)),
 	)

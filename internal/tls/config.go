@@ -37,6 +37,7 @@ func NewTLS(config *TLSConfig) (*tls.Config, error) {
 
 	if config.IsServer {
 		tlsCfg.ClientCAs = caPool
+		tlsCfg.RootCAs = caPool
 		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 	} else {
 		tlsCfg.RootCAs = caPool
